@@ -44,7 +44,7 @@ export async function buildWorkbook(data: Inspection) {
   // Inspection Information
   cell(ws, "D4", `: ${data.inspector}`);
   cell(ws, "D5", `: ${formatDate(data.inspectionDate)}`);
-  cell(ws, "D6", `: O/S Rear View Mirror ${data.line.join(" / ")}`);
+  cell(ws, "D6", `: PDI O/S Rear View Mirror ${data.line.join(" / ")}`);
 
   cell(ws, "M4", `: ${formatDate(data.lotDate)}`);
   cell(ws, "M5", `: ${data.shift}`);

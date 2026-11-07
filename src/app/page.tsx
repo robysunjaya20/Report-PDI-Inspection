@@ -16,7 +16,8 @@ export default function Home(){
  const [form,setForm]=useState<Inspection>(blank());
  const [records,setRecords]=useState<SavedRecord[]>([]);
  const [search,setSearch]=useState("");
- const [filterDate,setFilterDate]=useState("");
+ const [filterDateFrom,setFilterDateFrom]=useState("");
+ const [filterDateTo,setFilterDateTo]=useState("");
  const [filterShift,setFilterShift]=useState("");
  const [filterLine,setFilterLine]=useState("");
  const [filterModel,setFilterModel]=useState("");
@@ -68,8 +69,17 @@ export default function Home(){
  const filtered=useMemo(()=>records.filter(r=>{
    const itemModels=r.items.map(x=>x.model);
    const searchable=[r.inspector,r.inspectionDate,...itemModels,...r.items.map(x=>x.suffix)].join(" ").toLowerCase();
-   return searchable.includes(search.trim().toLowerCase())&&(!filterDate||r.inspectionDate===filterDate)&&(!filterShift||r.shift===filterShift)&&(!filterLine||r.line.includes(filterLine as Line))&&(!filterModel||itemModels.includes(filterModel as Model));
- }),[records,search,filterDate,filterShift,filterLine,filterModel]);
+
+   const matchDateFrom=!filterDateFrom||r.inspectionDate>=filterDateFrom;
+   const matchDateTo=!filterDateTo||r.inspectionDate<=filterDateTo;
+
+   return searchable.includes(search.trim().toLowerCase())&&
+     matchDateFrom&&
+     matchDateTo&&
+     (!filterShift||r.shift===filterShift)&&
+     (!filterLine||r.line.includes(filterLine as Line))&&
+     (!filterModel||itemModels.includes(filterModel as Model));
+ }),[records,search,filterDateFrom,filterDateTo,filterShift,filterLine,filterModel]);
 
  const update=(patch:Partial<Inspection>)=>setForm(p=>({...p,...patch}));
  const updateItem=(id:string,patch:Partial<InspectionItem>)=>update({items:form.items.map(x=>x.id===id?{...x,...patch}:x)});
@@ -80,7 +90,7 @@ export default function Home(){
   setError("");
   setNotice("");
 }
- function resetFilters(){setSearch("");setFilterDate("");setFilterShift("");setFilterLine("");setFilterModel("");}
+ function resetFilters(){setSearch("");setFilterDateFrom("");setFilterDateTo("");setFilterShift("");setFilterLine("");setFilterModel("");}
  function validate(){
   const issues:string[]=[];
   if(!form.inspector.trim())issues.push("Inspector Name belum diisi.");
@@ -222,7 +232,13 @@ Download File Excel: ${url || "Link Google Drive belum tersedia"}`;
    </section>:<section className="panel history-panel">
     <div className="history-head"><div><h2>History Inspection</h2><p>{records.length} laporan tersimpan di Google Sheets.</p></div><button className="btn btn-secondary" onClick={()=>loadHistory(true)} disabled={loading}>{loading?<LoaderCircle size={15} className="spin"/>:<Activity size={15}/>} Refresh</button></div>
     <div className="filters"><div className="filter-grid">
-     <div className="field"><label>Tanggal Inspeksi</label><input type="date" className="control" value={filterDate} onChange={e=>setFilterDate(e.target.value)}/></div>
+     <div className="field">
+      <label>Rentang Tanggal Inspeksi</label>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+       <input type="date" className="control" aria-label="Tanggal dari" title="Tanggal dari" value={filterDateFrom} max={filterDateTo||undefined} onChange={e=>setFilterDateFrom(e.target.value)}/>
+       <input type="date" className="control" aria-label="Tanggal sampai" title="Tanggal sampai" value={filterDateTo} min={filterDateFrom||undefined} onChange={e=>setFilterDateTo(e.target.value)}/>
+      </div>
+     </div>
      <div className="field"><label>Shift</label><select className="control" value={filterShift} onChange={e=>setFilterShift(e.target.value)}><option value="">Semua Shift</option><option value="1">Shift 1</option><option value="2">Shift 2</option><option value="3">Shift 3</option></select></div>
      <div className="field"><label>Inspection Line</label><select className="control" value={filterLine} onChange={e=>setFilterLine(e.target.value)}><option value="">Semua Line</option><option value="LH">LH</option><option value="RH">RH</option></select></div>
      <div className="field"><label>Model</label><select className="control" value={filterModel} onChange={e=>setFilterModel(e.target.value)}><option value="">Semua Model</option>{allModels.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
