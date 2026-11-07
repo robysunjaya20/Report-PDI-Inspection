@@ -2,7 +2,7 @@
 import {useEffect,useMemo,useState} from "react";
 import {Activity,CheckCircle2,ClipboardList,Download,ExternalLink,FileSpreadsheet,FolderOpen,History,LoaderCircle,MessageCircle,Plus,Search,ShieldCheck,Trash2,X,RefreshCw} from "lucide-react";
 import {buildWorkbook,safeFileName} from "@/lib/excel";
-import {emptyItem,Inspection,InspectionItem,Line,MODEL_PREFIX,Model,STORAGE_DRAFT,STORAGE_HISTORY} from "@/lib/types";
+import {emptyItem,Inspection,InspectionItem,Line,MODEL_PREFIX,Model,STORAGE_DRAFT} from "@/lib/types";
 
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
 const blank=():Inspection=>({id:crypto.randomUUID(),inspector:"",inspectionDate:today(),line:["LH"],lotDate:today(),shift:"1",items:[emptyItem()],createdAt:new Date().toISOString()});
@@ -30,9 +30,36 @@ export default function Home(){
  const [selected,setSelected]=useState<SavedRecord|null>(null);
  const [draftReady,setDraftReady]=useState(false);
 
- useEffect(()=>{try{const d=localStorage.getItem(STORAGE_DRAFT);if(d)setForm(JSON.parse(d));const h=localStorage.getItem(STORAGE_HISTORY);if(h)setRecords(JSON.parse(h));}catch(e){console.error("Gagal memulihkan data PDI",e)}finally{setDraftReady(true)}},[]);
+ async function loadHistory(showLoading=true){
+  if(!gasUrl){setRecords([]);return false;}
+  if(showLoading)setLoading(true);
+  try{
+   const separator=gasUrl.includes("?")?"&":"?";
+   const response=await fetch(`${gasUrl}${separator}action=list&_=${Date.now()}`,{method:"GET",cache:"no-store"});
+   const result=await response.json();
+   if(!response.ok||!result.success)throw new Error(result.message||"Gagal mengambil History dari Google Sheets.");
+   setRecords(Array.isArray(result.records)?result.records:[]);
+   return true;
+  }catch(e){
+   setError(e instanceof Error?e.message:"Gagal mengambil History dari Google Sheets.");
+   return false;
+  }finally{
+   if(showLoading)setLoading(false);
+  }
+ }
+
+ useEffect(()=>{
+  try{
+   const d=localStorage.getItem(STORAGE_DRAFT);
+   if(d)setForm(JSON.parse(d));
+  }catch(e){
+   console.error("Gagal memulihkan draft PDI",e);
+  }finally{
+   setDraftReady(true);
+  }
+  void loadHistory(false);
+ },[]);
  useEffect(()=>{if(draftReady)localStorage.setItem(STORAGE_DRAFT,JSON.stringify(form))},[form,draftReady]);
- useEffect(()=>{if(draftReady)localStorage.setItem(STORAGE_HISTORY,JSON.stringify(records))},[records,draftReady]);
 
  const totalSample=useMemo(()=>form.items.reduce((s,x)=>s+(Number(x.sampleQty)||0),0),[form.items]);
  const totalNg=useMemo(()=>form.items.reduce((s,x)=>s+(Number(x.ng)||0),0),[form.items]);
@@ -87,8 +114,7 @@ export default function Home(){
     driveUrl=result.fileUrl||"";downloadUrl=result.downloadUrl||"";folderUrl=result.folderUrl||"";
    }
    const objectUrl=URL.createObjectURL(blob);const a=document.createElement("a");a.href=objectUrl;a.download=fileName;a.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),10000);
-   const saved={...normalizedForm,fileName,driveUrl,downloadUrl,folderUrl};
-   setRecords(prev=>[saved,...prev.filter(x=>x.id!==saved.id)]);
+   if(gasUrl)await loadHistory(false);
    setSuccessFilename(fileName);setSuccessModal(true);
    if(gasUrl)setNotice("Laporan berhasil dibuat dan disimpan ke Google Drive.");
    else setNotice("File Excel berhasil dibuat dan diunduh. Google Drive belum terhubung.");
@@ -96,8 +122,40 @@ export default function Home(){
   }catch(e){setError(e instanceof Error?e.message:"Gagal membuat laporan Excel.");}
   finally{setBusy(false)}
  }
- function deleteOne(){if(!selected)return;setRecords(p=>p.filter(x=>x.id!==selected.id));setSelected(null);setConfirm(null);setNotice("Data History berhasil dihapus. File Excel di Google Drive tetap tersimpan.");}
- function deleteAll(){setRecords([]);setConfirm(null);setNotice("Seluruh History lokal berhasil dihapus. File Excel di Google Drive tetap tersimpan.");}
+ async function deleteOne(){
+  if(!selected)return;
+  if(!gasUrl){setError("Google Apps Script belum dikonfigurasi.");return;}
+  setLoading(true);
+  try{
+   const response=await fetch(gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"delete",recordId:selected.id})});
+   const result=await response.json();
+   if(!result.success)throw new Error(result.message||"Gagal menghapus History dari Google Sheets.");
+   await loadHistory(false);
+   setSelected(null);
+   setConfirm(null);
+   setNotice("Data History berhasil dihapus dari Google Sheets. File Excel di Google Drive tetap tersimpan.");
+  }catch(e){
+   setError(e instanceof Error?e.message:"Gagal menghapus History.");
+  }finally{
+   setLoading(false);
+  }
+ }
+ async function deleteAll(){
+  if(!gasUrl){setError("Google Apps Script belum dikonfigurasi.");return;}
+  setLoading(true);
+  try{
+   const response=await fetch(gasUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"deleteAll"})});
+   const result=await response.json();
+   if(!result.success)throw new Error(result.message||"Gagal menghapus seluruh History dari Google Sheets.");
+   await loadHistory(false);
+   setConfirm(null);
+   setNotice("Seluruh History berhasil dihapus dari Google Sheets. File Excel di Google Drive tetap tersimpan.");
+  }catch(e){
+   setError(e instanceof Error?e.message:"Gagal menghapus seluruh History.");
+  }finally{
+   setLoading(false);
+  }
+ }
  
 function share(r:SavedRecord){
   const url = r.downloadUrl || r.driveUrl || "";
@@ -159,10 +217,10 @@ Download File Excel: ${url || "Link Google Drive belum tersedia"}`;
     </div>
     <aside className="sidebar">
      <div className="panel side-card"><div className="section-title"><Activity size={19}/><h3>Inspection Summary</h3></div><div className="mini-metrics"><div className="metric green-bg"><span>Total Sample QTY</span><strong>{totalSample}</strong></div><div className="metric red-bg"><span>Total NG</span><strong>{totalNg}</strong></div></div><div className="metric blue-bg total-metric"><span>Total QTY</span><strong>{total}</strong></div><div className="side-foot">Jumlah Inspection Item: <b>{form.items.length} / 20</b></div></div>
-     <div className="panel side-card"><h3 className="side-heading">Report Configuration</h3><div className="config-list"><div><span>Template</span><b>PDI rev.3</b></div><div><span>Prepared</span><b>{form.inspector||"Inspector Name"}</b></div><div><span>Inspection Line</span><b>{form.line.length?form.line.join(" / "):"-"}</b></div><div><span>Inspection Item</span><b>{form.items.length} / 20</b></div><div><span>Format</span><b>.xlsx</b></div><div><span>Auto Save</span><b className="green-text">Local Storage</b></div></div></div>
+     <div className="panel side-card"><h3 className="side-heading">Report Configuration</h3><div className="config-list"><div><span>Template</span><b>PDI rev.3</b></div><div><span>Prepared</span><b>{form.inspector||"Inspector Name"}</b></div><div><span>Inspection Line</span><b>{form.line.length?form.line.join(" / "):"-"}</b></div><div><span>Inspection Item</span><b>{form.items.length} / 20</b></div><div><span>Format</span><b>.xlsx</b></div><div><span>Draft / History</span><b className="green-text">Local / Google Sheets</b></div></div></div>
     </aside>
    </section>:<section className="panel history-panel">
-    <div className="history-head"><div><h2>History Inspection</h2><p>{records.length} laporan tersimpan di browser ini.</p></div><button className="btn btn-secondary" onClick={()=>{setLoading(true);setTimeout(()=>setLoading(false),250)}} disabled={loading}>{loading?<LoaderCircle size={15} className="spin"/>:<Activity size={15}/>} Refresh</button></div>
+    <div className="history-head"><div><h2>History Inspection</h2><p>{records.length} laporan tersimpan di Google Sheets.</p></div><button className="btn btn-secondary" onClick={()=>loadHistory(true)} disabled={loading}>{loading?<LoaderCircle size={15} className="spin"/>:<Activity size={15}/>} Refresh</button></div>
     <div className="filters"><div className="filter-grid">
      <div className="field"><label>Tanggal Inspeksi</label><input type="date" className="control" value={filterDate} onChange={e=>setFilterDate(e.target.value)}/></div>
      <div className="field"><label>Shift</label><select className="control" value={filterShift} onChange={e=>setFilterShift(e.target.value)}><option value="">Semua Shift</option><option value="1">Shift 1</option><option value="2">Shift 2</option><option value="3">Shift 3</option></select></div>
@@ -175,6 +233,6 @@ Download File Excel: ${url || "Link Google Drive belum tersedia"}`;
   </div>
   {error&&<div className="modal-backdrop"><div className="modal error-modal"><div className="error-icon"><X size={30}/></div><h2>Periksa Kembali Data</h2><p className="error-message">{error}</p><button className="btn btn-primary full" onClick={()=>setError("")}>Mengerti</button></div></div>}
   {successModal&&<div className="modal-backdrop"><div className="modal"><div className="success-icon"><CheckCircle2 size={34}/></div><h2>Proses Berhasil!</h2><p>Laporan PDI berhasil dibuat{gasUrl?" dan disimpan ke Google Drive.":"."}</p><div className="filename"><span>Nama file:</span><b>{successFilename}</b></div><p className="modal-hint">Buka menu History untuk melihat arsip laporan.</p><button className="btn btn-primary full" onClick={()=>setSuccessModal(false)}>Tutup</button></div></div>}
-  {confirm&&<div className="modal-backdrop"><div className="modal confirm-modal"><div className="modal-top"><h2>{confirm==="all"?"Hapus Semua History?":"Hapus History?"}</h2><button onClick={()=>{setConfirm(null);setSelected(null)}}><X size={18}/></button></div><p>{confirm==="all"?"Seluruh catatan History akan dihapus dari browser ini. File Excel di Google Drive tidak akan dihapus.":"Catatan ini akan dihapus dari History. File Excel di Google Drive tetap tersimpan."}</p><div className="modal-actions"><button className="btn btn-secondary" onClick={()=>{setConfirm(null);setSelected(null)}}>Batal</button><button className="btn btn-danger" onClick={confirm==="all"?deleteAll:deleteOne}>Hapus</button></div></div></div>}
+  {confirm&&<div className="modal-backdrop"><div className="modal confirm-modal"><div className="modal-top"><h2>{confirm==="all"?"Hapus Semua History?":"Hapus History?"}</h2><button onClick={()=>{setConfirm(null);setSelected(null)}}><X size={18}/></button></div><p>{confirm==="all"?"Seluruh catatan History akan dihapus dari Google Sheets. File Excel di Google Drive tidak akan dihapus.":"Catatan ini akan dihapus dari Google Sheets. File Excel di Google Drive tetap tersimpan."}</p><div className="modal-actions"><button className="btn btn-secondary" onClick={()=>{setConfirm(null);setSelected(null)}}>Batal</button><button className="btn btn-danger" onClick={confirm==="all"?deleteAll:deleteOne}>Hapus</button></div></div></div>}
  </main>
 }
