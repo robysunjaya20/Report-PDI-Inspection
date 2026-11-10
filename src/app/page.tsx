@@ -6,7 +6,7 @@ import {emptyItem,Inspection,InspectionItem,Line,MODEL_PREFIX,Model,STORAGE_DRAF
 
 const today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
 const blank=():Inspection=>({id:crypto.randomUUID(),inspector:"",inspectionDate:today(),line:["LH"],lotDate:today(),shift:"1",items:[emptyItem()],createdAt:new Date().toISOString()});
-const allModels:Model[]=["SU2ID LH","SU2ID RH","KS LH","KS RH"];
+const allModels:Model[]=["SU2ID LH","SU2ID RH","KS LH","KS RH","CKD"];
 const gasUrl=process.env.NEXT_PUBLIC_GAS_WEB_APP_URL||"";
 const fmt=(value:string)=>value?new Date(`${value}T00:00:00`).toLocaleDateString("id-ID",{day:"2-digit",month:"long",year:"numeric"}):"-";
 type SavedRecord=Inspection & {fileName?:string;driveUrl?:string;downloadUrl?:string;folderUrl?:string};
@@ -65,7 +65,7 @@ export default function Home(){
  const totalSample=useMemo(()=>form.items.reduce((s,x)=>s+(Number(x.sampleQty)||0),0),[form.items]);
  const totalNg=useMemo(()=>form.items.reduce((s,x)=>s+(Number(x.ng)||0),0),[form.items]);
  const total=totalSample+totalNg;
- const allowedModels=allModels.filter(m=>form.line.includes(m.endsWith("LH")?"LH":"RH"));
+ const allowedModels=allModels.filter(m=>m==="CKD"||form.line.includes(m.endsWith("LH")?"LH":"RH"));
  const filtered=useMemo(()=>records.filter(r=>{
    const itemModels=r.items.map(x=>x.model);
    const searchable=[r.inspector,r.inspectionDate,...itemModels,...r.items.map(x=>x.suffix)].join(" ").toLowerCase();
@@ -101,7 +101,7 @@ export default function Home(){
   if(!form.items.length||form.items.length>20)issues.push("Jumlah Inspection Item harus 1 sampai 20.");
   form.items.forEach((x,i)=>{
    if(!x.model)issues.push(`Item ${i+1}: Model belum dipilih.`);
-   if(!/^[A-Z0-9]{6}$/.test(x.suffix.toUpperCase()))issues.push(`Item ${i+1}: Part Number harus 6 karakter. Contoh: 020NB9.`);
+   if(!x.suffix.trim())issues.push(`Item ${i+1}: Lanjutan Part Number belum diisi.`);
    if(x.sampleQty.trim()===""||!Number.isInteger(Number(x.sampleQty))||Number(x.sampleQty)<=0)issues.push(`Item ${i+1}: SAMPLE QTY wajib diisi dan lebih dari 0.`);
    if(x.ng!==""&&(!Number.isInteger(Number(x.ng))||Number(x.ng)<0))issues.push(`Item ${i+1}: NG harus bilangan bulat nol atau lebih.`);
   });
@@ -212,7 +212,7 @@ Download File Excel: ${url || "Link Google Drive belum tersedia"}`;
         <div className="item-card-head"><div className="item-heading"><span className="item-number">{index+1}</span><h3>Inspection Item {index+1}</h3></div><button className="remove-item" disabled={form.items.length===1} onClick={()=>update({items:form.items.filter(x=>x.id!==item.id)})}><Trash2 size={15}/> Hapus</button></div>
         <div className="item-fields">
          <div className="field"><label>Model <b>*</b></label><select className="control" value={item.model} onChange={e=>updateItem(item.id,{model:e.target.value as Model})}><option value="">Pilih Model</option>{options.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
-         <div className="field"><label>Part Number <b>*</b></label><div className="part-input"><span>{item.model?MODEL_PREFIX[item.model]:"Prefix"}</span><input className="control mono" maxLength={6} placeholder="020NB9" value={item.suffix} onChange={e=>updateItem(item.id,{suffix:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"")})}/></div><small>Masukkan 6 karakter: 3 kode produk + 3 kode warna.</small></div>
+         <div className="field"><label>Part Number <b>*</b></label><div className="part-input"><span>{item.model?MODEL_PREFIX[item.model]:"Prefix"}</span><input className="control mono" placeholder={item.model==="CKD"?"Part Number":"Part Number"} value={item.suffix} onChange={e=>updateItem(item.id,{suffix:e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"")})}/></div></div>
          <div className="field"><label>SAMPLE QTY <b>*</b></label><input type="number" min="1" step="1" className="control" placeholder="0" value={item.sampleQty} onChange={e=>{const value=e.target.value;updateItem(item.id,{sampleQty:value!==""&&Number(value)<=0?"":value})}}/></div>
          <div className="field"><label>NG <b>*</b></label><input type="number" min="0" step="1" className="control" placeholder="0" value={item.ng} onChange={e=>updateItem(item.id,{ng:e.target.value})}/></div>
          <div className="field"><label>Total QTY (Otomatis)</label><input className="control read-only" readOnly value={(Number(item.sampleQty)||0)+(Number(item.ng)||0)}/></div>

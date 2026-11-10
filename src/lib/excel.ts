@@ -1,4 +1,3 @@
-
 import ExcelJS from "exceljs";
 import { Inspection, MODEL_PREFIX } from "./types";
 
@@ -48,7 +47,7 @@ export async function buildWorkbook(data: Inspection) {
 
   cell(ws, "M4", `: ${formatDate(data.lotDate)}`);
   cell(ws, "M5", `: ${data.shift}`);
-  cell(ws, "M6", `: P D I `);
+  cell(ws, "M6", `: P D I`);
 
   // Prepared mengikuti Inspector Name
   cell(ws, "J57", ` ${data.inspector}`);
@@ -65,6 +64,7 @@ export async function buildWorkbook(data: Inspection) {
       continue;
     }
 
+    // CKD menggunakan prefix tetap 876; lanjutan Part Number diisi manual.
     const prefix = item.model ? MODEL_PREFIX[item.model] : "";
     const part = prefix + (item.suffix || "").toUpperCase();
 
